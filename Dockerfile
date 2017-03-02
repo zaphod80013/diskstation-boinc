@@ -1,4 +1,4 @@
-FROM debian:latest
+FROM ubuntu:latest
 MAINTAINER Ray Sutton <blackhole996@gmail.com>
 COPY startup.sh /usr/local/bin/startup.sh
 RUN apt-get upgrade; \
@@ -13,7 +13,5 @@ RUN apt-get upgrade; \
 USER boinc
 WORKDIR /home/boinc
 ENTRYPOINT ["/usr/local/bin/startup.sh"]
-#ENTRYPOINT ["/bin/bash"]
 EXPOSE 31416 80 443
 VOLUME ["/home/boinc"]
-#   apt-get -q install -y vim; \

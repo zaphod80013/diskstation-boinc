@@ -1,5 +1,4 @@
-#! /bin/bash -x 
-client_state.xml
+#! /bin/bash  
 
 if [ ! -f /home/boinc/client_state.xml ]; then
    #
@@ -81,4 +80,4 @@ if [ ! -f /home/boinc/gui_rpc_auth.cfg ]; then
    fi
 fi
 /usr/bin/boinc --allow_remote_gui_rpc --dir /home/boinc 2>&1 | grep -vi "/dev/input"
-
+rm /home/boinc/lockfile
