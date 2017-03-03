@@ -79,5 +79,11 @@ if [ ! -f /home/boinc/gui_rpc_auth.cfg ]; then
        touch /home/boinc/gui_rpc_auth.cfg
    fi
 fi
-/usr/bin/boinc --allow_remote_gui_rpc --dir /home/boinc 2>&1 | grep -vi "/dev/input"
+#
+# There should only be one instance of the Boinc container for a given server
+# if the container was stopped without first shutting down the client from a
+# remote Boinc Manager then the lockfile will likey exist. This may prevent
+# the container from starting so we first remove the lockfile if present.
+#
 rm /home/boinc/lockfile
+/usr/bin/boinc --allow_remote_gui_rpc --dir /home/boinc 2>&1 | grep -vi "/dev/input"
