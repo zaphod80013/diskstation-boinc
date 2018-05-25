@@ -63,7 +63,7 @@ if [ ! -f /home/boinc/client_state.xml ]; then
    # the user to set a password from the external environment if they
    # want..
    #
-   rm /home/boinc/gui_rpc_auth.cfg
+   rm -f /home/boinc/gui_rpc_auth.cfg
 fi
 if [ ! -f /home/boinc/gui_rpc_auth.cfg ]; then
    #
@@ -85,5 +85,5 @@ fi
 # remote Boinc Manager then the lockfile will likey exist. This may prevent
 # the container from starting so we first remove the lockfile if present.
 #
-rm /home/boinc/lockfile
+rm -f /home/boinc/lockfile
 /usr/bin/boinc --allow_remote_gui_rpc --dir /home/boinc 2>&1 | grep -vi "/dev/input"

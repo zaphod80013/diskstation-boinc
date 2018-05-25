@@ -1,70 +1,59 @@
 # Boinc
-
 ## Overview
-This is a Docker container created specifically to run a [boinc client](https://boinc.berkeley.edu) on my [Synology](https://www.synology.com) DS1815+ NAS, Although only tested on the DS1815+ it should run on any compatible DiskStation running DSM 6.0 or above with the Docker package installed. There is nothing Synology specific in the build so it should also run in any compatible Docker environment. The image is based on Ubuntu "Xenial Xerus" and uses an externally mapped directory for boinc data. This approach preserves work in progress across container restarts and upgrades. 
-
-The initial version of this image was my first foray into creating a Docker container. It's worked for me for about a year now (as of March 1st 2017) and I've tested data preservation across restarts and contain upgrades. However your milage may vary. Feedback always welcome. 
-
-For the current version I've switched the base image from Debian Jessie to Ubuntu  Xenial. This has resulted in a slightly larger image but allowed me to  pick up the 7.31 client, Debian, as of 1st March 2017, was still shipping the Boinc 7.4 client. 
-
-## Background
-
-By default, on Debian derived systems, the Boinc client installs with a working directory of */var/lib/boinc-client* as part of building the container I delete the contents of this directory. There are three reasons for this:
-
-* One of the files contains a generated uuid for this 'host' that is used to identify the machine, without this step all instances of the image would likely have the same identifier (see below for details). One consequence of this is that If you use an an Account Manager such as **BAM!** and run multiple containers they will likely all report under the same id and the hostname displayed on the website is unstable.
-
-* Boinc will generate a random remote access password stored in *gui_rpc_auth.cfg* . Without visibility into the container (or host system) to retrieve this password we would not be able to access the client remotely, and to access it locally we incur the overhead of installing a desktop and VNC server adding bloat to the container. 
-
-* We're going to map our working directory to an external location so these files are redundant. 
-
+This is a Docker container created specifically to run a [boinc client](https://boinc.berkeley.edu) on my [Synology](https://www.synology.com) DS1815+ NAS, Although only tested on the DS1815+ it should run on any compatible DiskStation running DSM 6.0 or above with the Docker package installed. There is nothing Synology specific in the build so it should also run in any compatible Docker environment. The image uses an externally mapped directory on the host system for boinc data. This approach preserves work in progress across container restarts and upgrades. 
+## Version History
+|  Date | Notes |
+|-------|----------|
+| 2016/07 | Initial version based on Debian:jesse with Boinc 7.4 
+| 2016/08 | Fixed issue with generating Unique host ID 
+| 2017/03 | Update base image to Unbuntu 16.04LTS (Xenial Xerus) and boinc client 7.6.31
+| 2018/05 | Update base image to Unbuntu 18.04LTS (Bionic Beaver) and boinc client 7.9.3 
 ## Operation
+### Dockerfile
+The docker file is fairly simple, it is based on the image **ubuntu:latest** which represent the current LTS release (at the time of writing: 18.04 bionic beaver), Apt is used to bring the container to current patch levels and the boinc client installed, also via apt.  By default, on Debian derived systems, the Boinc client installs with a working directory of */var/lib/boinc-client*  the content of this directory is deleted for the following reasons:
 
-The container entry point is a shell script called **startup.sh** placed in the */usr/local/bin* directory. This performs some first run setup and then starts the boinc client. The first run addresses the password issue outlined above, the code to do this follows:
+* The file **client_state.xml** contains a generated uuid for this 'host' that is used to identify the machine, this uuid is created as part of the install and would be the same for all containers run from the image. Across users I don't believe this would be an issue but for a single account running multiple containers this has undesirable consequences, for example if you use an Account Manager such as **BAM!** all containers will report under the same ID, this causes the displayed hostname to be unstable on the *boincstats* website. I'm not sure if there are any other ramification of this but we avoid the issue anyway.
 
-	    if [ ! -f /home/boinc/gui_rpc_auth.cfg ]; then
-	       if [ ! -z "$PASSWORD" ]; then
-	          echo "$PASSWORD" > /home/boinc/gui_rpc_auth.cfg
-	       else
-	           touch /home/boinc/gui_rpc_auth.cfg
-	       fi
-	    fi
-As you can see I determine first run by the absence of the password file. if it is not present one of two things will happen; if an environment variable called *PASSWORD* is passed to the docker run command its value is written to the file ***this appears to be a clear text password*** so avoid using a password you care about!  If the variable is not present an empty file is created which disables the remote access password altogether. After the first run the environment variable is no longer needed and may be removed to improve security, alternatively the file could be created manually and uploaded to the DiskStation via File Station at any point to create or change the password. 
+* Boinc will generate a random remote access password, stored in the file **gui_rpc_auth.cfg** . Accessing this password would either require access to the container, or the host environment. Making the container remotely accessible would add bloat due to needing to install either SSH or a desktop and VNC server. In the context of a Synology NAS local access would require enabling either telnet or SSH access which may not be desirable. Setting a password, if desired, is delegated to the startup script.
 
-The boinc client is then run as a foreground process using the command:
+* We're going to map our working directory to an external location so these files are redundant anyway. 
 
-	      /usr/bin/boinc --allow_remote_gui_rpc  --dir /home/boinc 2>&1 | grep -vi "/dev/input"
-This allows remote access from any host, maps the boinc data directory to */home/boinc* and filters the console output to remove certain error messages. The filtered messages are produce at a rate of about 3 per second and relate to physical devices not present in the Docker container, or as it happens on the DS1815+ (keyboard and mouse). I suspect these messages relate to detecting the "computer in use" condition that can be used to suspend boinc processing. Regardless we don't want to clutter the NAS with logs growing at the rate of over 250,000 lines a day.
+Having deleted the pre-installed files we create a directory (*/home/boinc*) that is exposed as a volume allowing the data to be mapped outside the container. The final steps include deploying a startup script (more on this below) to run boinc, setting the runtime user, working directory & container entrypoint.
+### Startup script
+The container entry point is a bash script called **startup.sh** placed in the */usr/local/bin* directory. It starts the boinc client in the forground to prevent the container from exiting. It also performs some initial setup on the first run of the container based on the existence of the  **client_state.xml** file in the boinc data directory. If this file does not exist then the following additional steps are performed:
+#### Creating a unique host id
+The boinc client is run, triggering initialization of the data directory. after a few seconds the client is shut down. The boinc code that generates the host identifier is reasonably deterministic, unfortunately docker is also reasonably deterministic in the way it chooses a private network subnet and allocates mac addresses to containers within that subnet. The net result is a high likelihood of duplicate host identifiers. 
 
-## Usage
+To address this a new host uuid is created from the MD5 hash of the current nanosecond time. This replaces the one generated by boinc itself.
+#### Create optional remote access password
+The boinc client supports an option remote access password in the file "**gui_rpc_auth.cfg**" by default this is set to a random value when the working directory is first initialized, this file is deleted and recreated by the starup script. If the *PASSWORD* environment variable is passed into the container the file will contain its value, otherwise it will be empty ***which completely disables remote access password protection***. It should also be noted that ***the password is stored in clear text*** so don't use a password you care about.
 
-The container exposes 3 ports:
+If you don't want to pass it to the container via the environment variable you can edit the file manually on the host filesystem if the data directory is external to the container. If you didn't remap the data directory you can use **docker exec** to run a shell and use *echo "value" >  gui_rpc_auth.cfg* or an equivalent command to set the password (the container doesn't have an terminal editor installed)
+#### Running boinc
+The following command is used to run ther boinc client as a foreground process:
 
-* The boinc management port (31416)
-* The standard http (80) Used for project communication.
-* The standard https ports (443) Again used for project communication.
+		/usr/bin/boinc --allow_remote_gui_rpc  --dir /home/boinc 2>&1 | grep -vi "/dev/input"
+	      
+This allows remote access from any host, password protected or not, and specifies */home/boinc* as the boinc data directory. The grep command filters messages written to the console to remove those relating to  physical devices not present in the Docker container, or as it happens on the DS1815+ (keyboard and mouse). I suspect these messages relate to detecting the "computer in use" condition that can be used to suspend boinc processing. These messages occur at a rate of about 3 per second and we don't want to clutter the NAS with logs growing at the rate of over 250,000 lines a day.
 
-And a single volume.
+### Launching the container
+The container exposes 3 ports used by boinc and maps a volume for the boinc data directory. It is possible to leave the volume unmapped but this would result in the in-container directory being used. The only way to access the data in this configuration would be via ***docker exec*** or similar commands.
+#### Ports
+|  Port | Usage 
+|--------:|----------
+| 31416 | Boinc manager communication port.
+| 443 | https connection to projects.
+| 80 | http connection to projects
+#### Volumes
+| Volume| Usage
+|-----------|-----------
+| /home/boinc | Directory holding boinc data
 
- * /home/boinc used to mount the external boinc data directory.
- 
 The directory mapped to */home/boinc* will likely need to be world writable in order to avoid permission problem when writing to it from the container. From the container's perspective the files will be owned by the BOINC user but from the NAS's perspective the directory is most likely owned by the Admin user. since their numeric user and group IDs will most likely differ the NAS will, by default, deny access to the container.
 
-To run the container from the command line you will need a command something like:
+The following command is appropriate for the initial run of a new install. The password is ignored on subsequent runs and should be omitted to minimize information leakage.
 
-    docker run -d -v <absolute path to data directory>:/home/boinc:rw -p 32768:31416 -p 32769:443 -p 32770:80 boinc
-    
-Or possibly for the first run only:
-
-    docker run -d -v /Users/ray/docker/Boinc/local:/home/boinc:rw -p 32768:31416 -p 32769:443 -p 32770:80 -e PASSWORD=xxxx boinc
+    	docker run -d -v <absolute path to data directory>:/home/boinc -p 32000:80  \
+    	-p 32001:443 -p 32002:80 -e PASSWORD=xxxxxx diskstation-boinc:latest
 
 On the DiskStation the Container Launch wizard can be used to build a launch command equivalent to the above.
-
-##The Boinc HostID
-
-Based on inspecting the source code the Boinc code that generates the host_cpid is reasonably deterministic in that if it finds a mac address it uses a md5 hash of this with the Boinc working directory name concatenated, the later ensure multiple instances on the same host get different host_cpid values. Unfortunately Docker is also reasonably deterministic in the way it chooses a private network subnet and allocates mac addresses to containers within that subnet.
-
- The net result is that it's highly likely we will generate identical host_cpid values running the container in different Docker instances. If a given user runs this Boinc image in multiple docker environments the likely identical host_cpid can result in account managers such as BAM! seeing different containers as the same host and allocating the same BAM! Host ID to them. This results in them being recorded as a single host who's name keep changing.
- 
- The startup.sh script addresses this by generating a new host_cpid based on the current nanosecond clock and using it to replace the original value in the client_state files. This has to occur only on the first run and before we connect to an account manager.
- 
-If the client_state file is missing we assume this is a first run situation and need to initialize Boinc to create a default config, this is where we generate our, hopefully unique host identifier and substitute this for the Boinc generated one.
