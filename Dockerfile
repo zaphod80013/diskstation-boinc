@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:latest as base
 MAINTAINER Ray Sutton <blackhole996@gmail.com>
 COPY startup.sh /usr/local/bin/startup.sh
 RUN apt-get upgrade; \
@@ -10,6 +10,8 @@ RUN apt-get upgrade; \
     mkdir -p /home/boinc; \
     chown boinc:boinc /home/boinc; \
     chmod 755 /usr/local/bin/startup.sh
+
+FROM base
 USER boinc
 WORKDIR /home/boinc
 ENTRYPOINT ["/usr/local/bin/startup.sh"]

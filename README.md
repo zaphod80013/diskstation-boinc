@@ -8,6 +8,7 @@ This is a Docker container created specifically to run a [boinc client](https://
 | 2016/08 | Fixed issue with generating Unique host ID 
 | 2017/03 | Update base image to Unbuntu 16.04LTS (Xenial Xerus) and boinc client 7.6.31
 | 2018/05 | Update base image to Unbuntu 18.04LTS (Bionic Beaver) and boinc client 7.9.3 
+| 2020/02 | Convert to multi-stage build, minor additions to readme file & apply OS updates.
 ## Operation
 ### Dockerfile
 The docker file is fairly simple, it is based on the image **ubuntu:latest** which represent the current LTS release (at the time of writing: 18.04 bionic beaver), Apt is used to bring the container to current patch levels and the boinc client installed, also via apt.  By default, on Debian derived systems, the Boinc client installs with a working directory of */var/lib/boinc-client*  the content of this directory is deleted for the following reasons:
@@ -53,7 +54,11 @@ The directory mapped to */home/boinc* will likely need to be world writable in o
 
 The following command is appropriate for the initial run of a new install. The password is ignored on subsequent runs and should be omitted to minimize information leakage.
 
-    	docker run -d -v <absolute path to data directory>:/home/boinc -p 32000:80  \
+    	docker run -d -v <absolute path to data directory>:/home/boinc -p 32000:31416  \
     	-p 32001:443 -p 32002:80 -e PASSWORD=xxxxxx diskstation-boinc:latest
 
 On the DiskStation the Container Launch wizard can be used to build a launch command equivalent to the above.
+
+### Remote Access
+
+When accessing the container from a remote manager, unless you mapped the port to itself, you need to explicitly specify the port you mapped port 31416 to, 32000 in the example above.  
